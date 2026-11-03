@@ -15,7 +15,7 @@ A private AI assistant that runs entirely on your Mac. No accounts, no cloud, no
 Open **Terminal** (press Cmd+Space, type "Terminal", press Enter) and paste:
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/tinik.git ~/tinik && ~/tinik/install.sh
+git clone https://github.com/hunterbeezley/tinik.git ~/tinik && ~/tinik/install.sh
 ```
 
 If macOS offers to install "command line developer tools", click **Install**, wait, then paste the line again.
