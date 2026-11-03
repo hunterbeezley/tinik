@@ -1,0 +1,14 @@
+# Tinik Aider config (loaded by `bin/tinik` via --config)
+model: ollama_chat/qwen2.5-coder:14b
+
+# Git & formatting
+auto-commits: true
+pretty: true
+stream: true
+
+# Edit format tuned for local Ollama models
+edit-format: diff
+
+# Keep it private / quiet
+analytics-disable: true
+check-update: false

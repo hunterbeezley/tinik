@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# Tinik CLI — wrapper around Aider, Ollama and Open WebUI.
+set -euo pipefail
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+# Resolve the repo dir even when invoked through a symlink.
+SRC="${BASH_SOURCE[0]}"
+while [ -L "$SRC" ]; do
+  DIR="$(cd -P "$(dirname "$SRC")" && pwd)"
+  SRC="$(readlink "$SRC")"
+  [[ "$SRC" != /* ]] && SRC="$DIR/$SRC"
+done
+TINIK_HOME="${TINIK_HOME:-$(cd -P "$(dirname "$SRC")/.." && pwd)}"
+CFG="$HOME/.config/tinik"
+# shellcheck disable=SC1091
+[ -f "$CFG/config.env" ] && . "$CFG/config.env"
+
+CHAT_MODEL="${TINIK_CHAT_MODEL:-qwen3:14b}"
+export OLLAMA_API_BASE="${OLLAMA_API_BASE:-http://127.0.0.1:11434}"
+WEBUI_PORT=8080
+CONTEXT="$CFG/context.md"
+[ -f "$CONTEXT" ] || CONTEXT="$TINIK_HOME/config/context.template.md"
+
+up() { curl -fs -o /dev/null -m 2 "$1" 2>/dev/null; }
+
+need() {
+  command -v "$1" >/dev/null 2>&1 || { echo "tinik: '$1' not found. Run: $TINIK_HOME/install.sh" >&2; exit 1; }
+}
+
+ensure_ollama() {
+  need ollama
+  up "$OLLAMA_API_BASE/api/tags" && return
+  echo "Starting Ollama..."
+  brew services start ollama >/dev/null 2>&1 || (nohup ollama serve >/dev/null 2>&1 &)
+  for _ in $(seq 1 30); do up "$OLLAMA_API_BASE/api/tags" && return; sleep 1; done
+  echo "tinik: could not reach Ollama at $OLLAMA_API_BASE" >&2; exit 1
+}
+
+webui_url() {
+  for p in 3000 "$WEBUI_PORT"; do up "http://localhost:$p" && { echo "http://localhost:$p"; return 0; }; done
+  return 1
+}
+
+start_webui() {
+  need open-webui; ensure_ollama; mkdir -p "$CFG"
+  echo "Starting Open WebUI (first launch can take a minute or two)..."
+  # Run from $CFG so Open WebUI's .webui_secret_key lands there, not in the repo.
+  ( cd "$CFG" && DATA_DIR="$HOME/.open-webui" OLLAMA_BASE_URL="$OLLAMA_API_BASE" \
+    SCARF_NO_ANALYTICS=true DO_NOT_TRACK=true ANONYMIZED_TELEMETRY=false \
+    nohup open-webui serve --port "$WEBUI_PORT" >"$CFG/webui.log" 2>&1 & ) </dev/null >/dev/null 2>&1
+  for _ in $(seq 1 180); do webui_url >/dev/null && return 0; sleep 1; done
+  echo "tinik: Open WebUI didn't start. See $CFG/webui.log" >&2; exit 1
+}
+
+usage() {
+  cat <<USAGE
+Tinik Local AI CLI
+
+Usage:
+  tinik [aider args]   Start Aider with Qwen 2.5 Coder 14b (run inside a project folder)
+  tinik chat           Interactive terminal chat ($CHAT_MODEL)
+  tinik plan           Start (if needed) and open Open WebUI in the browser
+  tinik stop           Stop Open WebUI
+  tinik list           List local models
+  tinik update         Pull the latest Tinik and re-run the installer
+  tinik help           Show this help
+USAGE
+}
+
+case "${1:-}" in
+  chat) ensure_ollama; echo "Starting Tinik Chat ($CHAT_MODEL)..."; exec ollama run "$CHAT_MODEL" ;;
+  plan)
+    url="$(webui_url || true)"
+    if [ -z "$url" ]; then start_webui; url="$(webui_url)"; fi
+    echo "Opening Tinik WebUI at $url"; exec open "$url" ;;
+  stop) pkill -f "open-webui serve" && echo "Stopped Open WebUI." || echo "Open WebUI wasn't running." ;;
+  list) ensure_ollama; exec ollama list ;;
+  update) git -C "$TINIK_HOME" pull --ff-only && exec "$TINIK_HOME/install.sh" ;;
+  help|--help|-h) usage ;;
+  *)
+    need aider; ensure_ollama
+    exec aider --config "$TINIK_HOME/config/aider.conf.yml" \
+      --model-settings-file "$TINIK_HOME/config/aider.model.settings.yml" \
+      --read "$CONTEXT" "$@" ;;
+esac

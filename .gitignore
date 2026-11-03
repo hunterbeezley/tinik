@@ -1,0 +1,4 @@
+.DS_Store
+.webui_secret_key
+.aider*
+*.pdf

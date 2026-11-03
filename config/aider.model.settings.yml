@@ -1,0 +1,7 @@
+# Ollama defaults to a tiny context window; raise it so Aider's repo map fits.
+- name: ollama_chat/qwen2.5-coder:14b
+  extra_params:
+    num_ctx: 16384
+- name: ollama_chat/qwen3:14b
+  extra_params:
+    num_ctx: 16384
